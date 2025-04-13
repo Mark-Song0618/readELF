@@ -55,9 +55,9 @@ void
 ELFParser::parseFile(const char* filePath)
 {
     if (_elf64) {
-        parseInternal<Elf64_Ehdr>(filePath);
+        parseInternal<ELF64TypeTraits>(filePath);
     } else {
-        parseInternal<Elf32_Ehdr>(filePath);
+        parseInternal<ELF32TypeTraits>(filePath);
     }
 }
 
@@ -67,4 +67,21 @@ ELFParser::reportErr()
     printf("%s", _err.c_str());
 }
 
+const char* 
+ELFParser::symTypeStr(char type)
+{
+    if (type == STT_OBJECT) {
+        return "Data Object";
+    } else if (type == STT_FUNC) {
+        return "Function.";
+    } else if (type == STT_SECTION) {
+        return "Section.";
+    } else if (type == STT_FILE) {
+        return "FILE.";
+    } else if (type ==STT_NUM) {
+        return "Number.";
+    } else {
+        return "Other type.";
+    }
+}
 }
