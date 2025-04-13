@@ -6,6 +6,51 @@
 namespace ELF {
 
 bool
+ELFParser::setOptions(const int& argc, const char* argv[])
+{
+    if (argc == 2) {
+        _opts = 0x01;
+        if (checkFile(argv[1])) {
+            _f = fopen(argv[1], "r");
+            return true;
+        } else {
+            usage();
+            return false;
+        }
+    }
+    _opts = 0;
+    for (auto idx = 1; idx < argc; ++idx) {
+        if (strncmp(argv[idx], "-h", 2) == 0) {
+           _opts = _opts | (0x01 << OPT_HEADER);  
+        } else if (strncmp(argv[idx], "-S", 2) == 0) {
+           _opts = _opts | (0x01 << OPT_SECTAB);  
+        } else if (strncmp(argv[idx], "-s", 2) == 0) {
+           _opts = _opts | (0x01 << OPT_SYMTAB);  
+        } else {
+            if (checkFile(argv[idx])) {
+                _f = fopen(argv[idx], "r");
+                return true; // terminate successfullly.
+            } else {
+                usage();
+                return false;
+            }
+        }
+    }
+    usage();
+    return false;
+}
+
+void 
+ELFParser::usage()
+{
+    printf("Usage: ");
+    printf("[options] filePath.\n");
+    printf("\t-h : print ELF header.\n");
+    printf("\t-S : print sections.\n");
+    printf("\t-s : print symbols.\n");
+}
+
+bool
 ELFParser::checkFile(const char* filePath)
 {
     FILE* f = fopen(filePath, "r");
@@ -52,13 +97,18 @@ ELFParser::checkFile(const char* filePath)
 }
 
 void
-ELFParser::parseFile(const char* filePath)
+ELFParser::parseFile(const int& argc, const char* argv[])
 {
-    if (_elf64) {
-        parseInternal<ELF64TypeTraits>(filePath);
-    } else {
-        parseInternal<ELF32TypeTraits>(filePath);
+    if (!setOptions(argc, argv)) {
+        return;
     }
+
+    if (_elf64) {
+        parseInternal<ELF64TypeTraits>();
+    } else {
+        parseInternal<ELF32TypeTraits>();
+    }
+    fclose(_f);
 }
 
 void 

@@ -1,18 +1,23 @@
+#pragma once
+
 #include <elf.h>
 #include <string>
-#include <vector>
-#include <string.h>
 #include <stdio.h>
 
 namespace ELF {
 
+#define OPT_HEADER 0
+#define OPT_SECTAB 1
+#define OPT_SYMTAB 2
+
 // todo: option support: -h -s .etc
 class ELFParser {
-private:
 public:
+    bool setOptions(const int& argc, const char* argv[]);
+
     bool checkFile(const char* filePath);
 
-    void parseFile(const char* filePath);
+    void parseFile(const int& argc, const char* argv[]);
 
     void reportErr();
 
@@ -33,18 +38,18 @@ private:
 private:
     // caller duety to free 
     template<typename ELFTypeTraits> 
-    typename ELFTypeTraits::HeaderType* readELFHeader(FILE* f);
+    typename ELFTypeTraits::HeaderType* readELFHeader();
     template<typename ELFTypeTraits> 
-    typename ELFTypeTraits::SecEntryType* readSecTable(const typename ELFTypeTraits::HeaderType* header, FILE* f);
+    typename ELFTypeTraits::SecEntryType* readSecTable(const typename ELFTypeTraits::HeaderType* header);
     template<typename ELFTypeTraits> 
-    typename ELFTypeTraits::SymType* readSymTab(const typename ELFTypeTraits::HeaderType* header, FILE* f, unsigned& cnt, bool dynamic);
+    typename ELFTypeTraits::SymType* readSymTab(const typename ELFTypeTraits::HeaderType* header, unsigned& cnt, bool dynamic);
     template<typename ELFTypeTraits> 
-    char* readStrTab(const typename ELFTypeTraits::HeaderType* header, FILE* f);
+    char* readStrTab(const typename ELFTypeTraits::HeaderType* header);
     template<typename ELFTypeTraits> 
-    char* readSecStrTab(const typename ELFTypeTraits::HeaderType* header, FILE* f);
+    char* readSecStrTab(const typename ELFTypeTraits::HeaderType* header);
 
     template<typename ELFTypeTraits> 
-    void parseInternal(const char* filePath);
+    void parseInternal();
     template<typename ELFTypeTraits> 
     void parseIdent(const typename ELFTypeTraits::HeaderType* header);
     template<typename ELFTypeTraits> 
@@ -52,28 +57,32 @@ private:
     template<typename ELFTypeTraits> 
     void parseMachine(const typename ELFTypeTraits::HeaderType* header);
     template<typename ELFTypeTraits> 
-    void parseSymTab(const typename ELFTypeTraits::HeaderType* header, FILE* f);
+    void parseSymTab(const typename ELFTypeTraits::HeaderType* header);
     template<typename ELFTypeTraits> 
-    void parseSymbols(const typename ELFTypeTraits::HeaderType* header, typename ELFTypeTraits::SymType* first, unsigned cnt, FILE* f);
+    void parseSymbols(const typename ELFTypeTraits::HeaderType* header, typename ELFTypeTraits::SymType* first, unsigned cnt);
     template<typename ELFTypeTraits> 
-    void parseSections(const typename ELFTypeTraits::HeaderType* header, FILE* f);
+    void parseSections(const typename ELFTypeTraits::HeaderType* header);
     template<typename ELFTypeTraits>
     void printSecInfo(typename ELFTypeTraits::SecEntryType* secEntry, const char* strTab);
 
     const char* symTypeStr(char type);
+
+    void usage();
 private:
-    std::string              _err;
-    bool                     _elf64;
+    FILE*                   _f;
+    std::string             _err;
+    bool                    _elf64;
+    unsigned char           _opts = 0x01;
 };
 
 template<typename ELFTypeTraits> 
 typename ELFTypeTraits::HeaderType* 
-ELFParser::readELFHeader(FILE* f)
+ELFParser::readELFHeader()
 {
     unsigned headerSize = sizeof(typename ELFTypeTraits::HeaderType);
     typename ELFTypeTraits::HeaderType *header = (typename ELFTypeTraits::HeaderType*)malloc(headerSize);
-    fseek(f, 0, SEEK_SET);
-    int readBytes = fread(header, 1, headerSize, f);
+    fseek(_f, 0, SEEK_SET);
+    int readBytes = fread(header, 1, headerSize, _f);
     if (headerSize> readBytes) {
         free(header);
         header = nullptr;
@@ -83,12 +92,12 @@ ELFParser::readELFHeader(FILE* f)
 
 template<typename ELFTypeTraits> 
 typename ELFTypeTraits::SecEntryType* 
-ELFParser::readSecTable(const typename ELFTypeTraits::HeaderType* header, FILE* f)
+ELFParser::readSecTable(const typename ELFTypeTraits::HeaderType* header)
 {
     unsigned secTabSize = header->e_shentsize * header->e_shnum;
     void* secTab = malloc(secTabSize);
-    fseek(f, header->e_shoff, SEEK_SET);
-    unsigned readBytes = fread(secTab, 1, secTabSize, f);
+    fseek(_f, header->e_shoff, SEEK_SET);
+    unsigned readBytes = fread(secTab, 1, secTabSize, _f);
     if (readBytes < secTabSize) {
         free(secTab);
         secTab = nullptr;
@@ -98,9 +107,9 @@ ELFParser::readSecTable(const typename ELFTypeTraits::HeaderType* header, FILE* 
 
 template<typename ELFTypeTraits> 
 char* 
-ELFParser::readSecStrTab(const typename ELFTypeTraits::HeaderType* header, FILE* f)
+ELFParser::readSecStrTab(const typename ELFTypeTraits::HeaderType* header)
 {
-    typename ELFTypeTraits::SecEntryType* secTab = readSecTable<ELFTypeTraits>(header, f);
+    typename ELFTypeTraits::SecEntryType* secTab = readSecTable<ELFTypeTraits>(header);
     if (!secTab) {
         return nullptr;
     }
@@ -109,8 +118,8 @@ ELFParser::readSecStrTab(const typename ELFTypeTraits::HeaderType* header, FILE*
     unsigned strTabSize = secStrEntry->sh_size;
     unsigned strTabOff  = secStrEntry->sh_offset;
     void* strTab = malloc(strTabSize);
-    fseek(f, strTabOff, SEEK_SET);
-    unsigned readBytes = fread(strTab, 1, strTabSize, f);
+    fseek(_f, strTabOff, SEEK_SET);
+    unsigned readBytes = fread(strTab, 1, strTabSize, _f);
     if (strTabSize > readBytes) {
         free(strTab);
         return nullptr;
@@ -120,9 +129,9 @@ ELFParser::readSecStrTab(const typename ELFTypeTraits::HeaderType* header, FILE*
 
 template<typename ELFTypeTraits> 
 char* 
-ELFParser::readStrTab(const typename ELFTypeTraits::HeaderType* header, FILE* f)
+ELFParser::readStrTab(const typename ELFTypeTraits::HeaderType* header)
 {
-    typename ELFTypeTraits::SecEntryType* secTab = readSecTable<ELFTypeTraits>(header, f);
+    typename ELFTypeTraits::SecEntryType* secTab = readSecTable<ELFTypeTraits>(header);
     if (!secTab) {
         return nullptr;
     }
@@ -134,8 +143,8 @@ ELFParser::readStrTab(const typename ELFTypeTraits::HeaderType* header, FILE* f)
         if (curr->sh_type == SHT_STRTAB) {
             unsigned readBytes = 0;
             strTab = (char*)malloc(curr->sh_size);
-            fseek(f, curr->sh_offset, SEEK_SET);
-            readBytes = fread(strTab, 1, curr->sh_size, f);
+            fseek(_f, curr->sh_offset, SEEK_SET);
+            readBytes = fread(strTab, 1, curr->sh_size, _f);
             if (readBytes < curr->sh_size) {
                 free(strTab);
                 strTab = nullptr;
@@ -148,11 +157,8 @@ ELFParser::readStrTab(const typename ELFTypeTraits::HeaderType* header, FILE* f)
 
 template<typename ELFTypeTraits> 
 typename ELFTypeTraits::SymType* 
-ELFParser::readSymTab(const typename ELFTypeTraits::HeaderType* header, FILE* f, unsigned& cnt, bool dynamic) {
-    typename ELFTypeTraits::SecEntryType* secTab = readSecTable<ELFTypeTraits>(header, f);  
-    if (!f) {
-        return nullptr;
-    }
+ELFParser::readSymTab(const typename ELFTypeTraits::HeaderType* header, unsigned& cnt, bool dynamic) {
+    typename ELFTypeTraits::SecEntryType* secTab = readSecTable<ELFTypeTraits>(header);  
     typename ELFTypeTraits::SecEntryType* symTabHeader = nullptr;
     for (unsigned idx = 0; idx != header->e_shnum; ++idx) {
         if (dynamic && (secTab+idx)->sh_type == SHT_DYNSYM) {
@@ -168,8 +174,8 @@ ELFParser::readSymTab(const typename ELFTypeTraits::HeaderType* header, FILE* f,
     if (symTabHeader) {
         cnt = symTabHeader->sh_size / symTabHeader->sh_entsize;
         symTab = (typename ELFTypeTraits::SymType*)malloc(symTabHeader->sh_size);
-        fseek(f, symTabHeader->sh_offset, SEEK_SET);
-        unsigned readBytes = fread(symTab, 1, symTabHeader->sh_size, f); 
+        fseek(_f, symTabHeader->sh_offset, SEEK_SET);
+        unsigned readBytes = fread(symTab, 1, symTabHeader->sh_size, _f); 
         if (readBytes < symTabHeader->sh_size) {
             free((void*)symTab);
             symTab = nullptr;
@@ -250,9 +256,9 @@ ELFParser::printSecInfo(typename ELFTypeTraits::SecEntryType* secEntry, const ch
 
 template<typename ELFTypeTraits> 
 void
-ELFParser::parseSymbols(const typename ELFTypeTraits::HeaderType* header, typename ELFTypeTraits::SymType* first, unsigned cnt, FILE* f)
+ELFParser::parseSymbols(const typename ELFTypeTraits::HeaderType* header, typename ELFTypeTraits::SymType* first, unsigned cnt)
 {
-    char* strTab = readStrTab<ELFTypeTraits>(header, f); 
+    char* strTab = readStrTab<ELFTypeTraits>(header); 
     typename ELFTypeTraits::SymType* curr = nullptr;
     unsigned char type = 0;   
     for (unsigned idx = 0; idx != cnt; ++idx) {
@@ -268,30 +274,30 @@ ELFParser::parseSymbols(const typename ELFTypeTraits::HeaderType* header, typena
 
 template<typename ELFTypeTraits> 
 void
-ELFParser::parseSymTab(const typename ELFTypeTraits::HeaderType* header, FILE* f)
+ELFParser::parseSymTab(const typename ELFTypeTraits::HeaderType* header)
 {
-    typename ELFTypeTraits::SecEntryType* secTab = readSecTable<ELFTypeTraits>(header, f); 
+    typename ELFTypeTraits::SecEntryType* secTab = readSecTable<ELFTypeTraits>(header); 
     if (!secTab) {
         return;
     }
-    char* strTab = readStrTab<ELFTypeTraits>(header, f); 
+    char* strTab = readStrTab<ELFTypeTraits>(header); 
     if (!strTab) {
         free(secTab);
         return;
     }
 
     unsigned symCnt = 0;
-    typename ELFTypeTraits::SymType* symTab= readSymTab<ELFTypeTraits>(header, f, symCnt, false); 
+    typename ELFTypeTraits::SymType* symTab= readSymTab<ELFTypeTraits>(header, symCnt, false); 
     if (symTab) {
         printf("Symbol Table: \n");
-        parseSymbols<ELFTypeTraits>(header, symTab, symCnt, f);        
+        parseSymbols<ELFTypeTraits>(header, symTab, symCnt);        
         free(symTab);
     }
     
-    symTab = readSymTab<ELFTypeTraits>(header, f, symCnt, true); 
+    symTab = readSymTab<ELFTypeTraits>(header, symCnt, true); 
     if (symTab) {
         printf("Dynamic Symbol Table: \n");
-        parseSymbols<ELFTypeTraits>(header, symTab, symCnt, f);        
+        parseSymbols<ELFTypeTraits>(header, symTab, symCnt);        
         free(symTab);
     }
     free(strTab);
@@ -300,13 +306,13 @@ ELFParser::parseSymTab(const typename ELFTypeTraits::HeaderType* header, FILE* f
 
 template<typename ELFTypeTraits> 
 void
-ELFParser::parseSections(const typename ELFTypeTraits::HeaderType* header, FILE* f)
+ELFParser::parseSections(const typename ELFTypeTraits::HeaderType* header)
 {
-    typename ELFTypeTraits::SecEntryType* secTab = readSecTable<ELFTypeTraits>(header, f);
+    typename ELFTypeTraits::SecEntryType* secTab = readSecTable<ELFTypeTraits>(header);
     if (!secTab) {
         return;
     }
-    char* strTab = readSecStrTab<ELFTypeTraits>(header, f);
+    char* strTab = readSecStrTab<ELFTypeTraits>(header);
     if (!strTab) {
         free(secTab);
         return;
@@ -320,22 +326,25 @@ ELFParser::parseSections(const typename ELFTypeTraits::HeaderType* header, FILE*
 }
 
 template <typename ELFTypeTraits>
-void ELFParser::parseInternal(const char* filePath)
+void ELFParser::parseInternal()
 {
-    FILE* f = fopen(filePath, "r");
-    typename ELFTypeTraits::HeaderType* header = readELFHeader<ELFTypeTraits>(f); 
+    typename ELFTypeTraits::HeaderType* header = readELFHeader<ELFTypeTraits>(); 
     if (!header) {
         return;
     }
-    parseIdent<ELFTypeTraits>(header);
-    parseType<ELFTypeTraits>(header);
-    parseMachine<ELFTypeTraits>(header);
-    parseSections<ELFTypeTraits>(header, f);
-    parseSymTab<ELFTypeTraits>(header, f);
+    if ((0x01 << OPT_HEADER) & _opts) {
+        parseIdent<ELFTypeTraits>(header);
+        parseType<ELFTypeTraits>(header);
+        parseMachine<ELFTypeTraits>(header);
+    }
+    if ((0x01 << OPT_SECTAB) & _opts) {
+        parseSections<ELFTypeTraits>(header);
+    }
+    if ((0x01 << OPT_SYMTAB) & _opts) {
+        parseSymTab<ELFTypeTraits>(header);
+    }
     // todo: report more
-    
     free(header);
-    fclose(f);
 }
 
 }
